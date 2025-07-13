@@ -9,11 +9,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 const defaultManifestPriority = 1000
+
 var applyOrder = []string{
 	"Namespace",
 	"ResourceQuota",
@@ -66,7 +68,40 @@ func NewSyncer(repository string) (*Syncer, error) {
 	return s, nil
 }
 
-func (s *Syncer) Close() error {
+func (s *Syncer) syncLoop(ctx context.Context, ticker <-chan time.Time, sigs <-chan os.Signal) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case sig := <-sigs:
+			slog.Info("received signal", "signal", sig)
+			return nil
+		case t := <-ticker:
+			slog.Info("starting sync cycle", "time", t)
+			if err := s.syncOnce(ctx); err != nil {
+				return fmt.Errorf("sync failed: %w", err)
+			}
+		}
+	}
+}
+
+func (s *Syncer) syncOnce(ctx context.Context) error {
+	if err := s.pull(ctx); err != nil {
+		return fmt.Errorf("pull failed: %w", err)
+	}
+
+	if err := s.loadManifests(ctx); err != nil {
+		return fmt.Errorf("load manifests failed: %w", err)
+	}
+
+	if err := s.applyManifests(ctx); err != nil {
+		return fmt.Errorf("apply manifests failed: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Syncer) cleanup() error {
 	if s.TempFolder != "" {
 		return os.RemoveAll(s.TempFolder)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -9,61 +10,45 @@ import (
 	"time"
 )
 
-
 func main() {
-	slog.Info("SimpleSync", "args", os.Args)
+	slog.Info("SimpleSync starting", "args", os.Args)
 
 	if len(os.Args) < 2 {
-		slog.Error("missing required argument")
+		slog.Error("usage: simplesync <repository>")
 		os.Exit(1)
 	}
 
-	repository := os.Args[1]
+	if err := run(os.Args[1]); err != nil {
+		slog.Error("application failed", "err", err)
+		os.Exit(1)
+	}
+}
 
+func run(repository string) error {
 	ctx, cancel := context.WithCancel(context.Background())
-	ticker := time.NewTicker(10 * time.Second)
-	sigs := make(chan os.Signal, 1)
+	defer cancel()
 
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigs)
 
 	s, err := NewSyncer(repository)
 	if err != nil {
-		slog.Error("failed to initialize syncer", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to initialize syncer: %w", err)
 	}
 
-	s.cloneRepo(ctx)
-
-	for {
-		select {
-		case sig := <-sigs:
-			slog.Info("os signals", "sigs", sig)
-
-			cancel()
-			s.Close()
-
-			return
-		case t := <-ticker.C:
-			slog.Info("ticking", "tick", t)
-
-			if err := s.pull(ctx); err != nil {
-				slog.Error("failed to pull repository", "err", err)
-				return
-			}
-
-			if err := s.loadManifests(ctx); err != nil {
-				slog.Error("failed to load manifests", "err", err)
-				return
-
-			}
-
-			if err := s.applyManifests(ctx); err != nil {
-				slog.Error("failed to apply manifests", "err", err)
-				return
-
-			}
-
+	defer func() {
+		if err := s.cleanup(); err != nil {
+			slog.Error("failed to cleanup", "err", err)
 		}
+	}()
+
+	if err := s.cloneRepo(ctx); err != nil {
+		return fmt.Errorf("failed to clone repository: %w", err)
 	}
 
+	return s.syncLoop(ctx, ticker.C, sigs)
 }
