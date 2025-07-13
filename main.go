@@ -9,34 +9,6 @@ import (
 	"time"
 )
 
-var applyOrder = []string{
-	"Namespace",
-	"ResourceQuota",
-	"LimitRange",
-	"PodSecurityPolicy",
-	"Secret",
-	"ConfigMap",
-	"StorageClass",
-	"PersistentVolume",
-	"PersistentVolumeClaim",
-	"ServiceAccount",
-	"CustomResourceDefinition",
-	"ClusterRole",
-	"ClusterRoleBinding",
-	"Role",
-	"RoleBinding",
-	"Service",
-	"DaemonSet",
-	"Deployment",
-	"StatefulSet",
-	"Job",
-	"CronJob",
-	"Ingress",
-	"APIService",
-	"MutatingWebhookConfiguration",
-	"ValidatingWebhookConfiguration",
-	"AdmissionConfiguration",
-}
 
 func main() {
 	slog.Info("SimpleSync", "args", os.Args)
